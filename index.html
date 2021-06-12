@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script>
+			document.addEventListener("DOMContentLoaded", function(){
+
+				function getRandomInt(min, max) {
+				  min = Math.ceil(min);
+				  max = Math.floor(max);
+				  return Math.floor(Math.random() * (max - min) + min); //The maximum is exclusive and the minimum is inclusive
+				}
+
+
+				//TODO to make snakes give them a reference to the previous snake or ship
+				//then have a common interface where they can get the last position/speed of their leader and adjust theirs to follow				
+				//class Snake{
+				//	constructor(prev, position
+				//}
+
+				class FreeSnake{
+					constructor(canvas, maxRadius){
+						//select a random spot thats magnitude (radius) is within maxRadius
+						let inBounds = false;
+						//while(!inBounds){
+							let x = getRandomInt(200, 600);//-maxRadius, maxRadius);
+							let y = getRandomInt(200, 600);//-maxRadius, maxRadius);
+							//test radial distance with pythagoras theorem
+							//if(Math.sqrt( Math.pow(x, 2) + Math.pow(y, 2) ) < maxRadius ){
+								//this.position = {x:x+canvas.width/2, y:y+canvas.height/2};
+								this.position = {x:x, y:y};
+							//	inBounds = true;
+							//}
+						//}
+						this.radius = 10;
+					}
+
+					draw(ctx){
+						ctx.fillStyle="#FFF";
+						ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI*2);
+						ctx.fill();
+					}
+				}
+
+				class Ship{
+
+					//position
+					//orientation
+					//scale
+					//velocity
+					//let u = [1,0];
+					//let v = [0,1];
+					
+
+					constructor(canvas){
+						this.position = {x:canvas.width*0.5, y:canvas.height*0.5};
+						this.velocity = {x:0, y:0};
+						this.speed = 0;
+						this.angle = 0;
+						this.prevAngles = [];
+						this.prevPositions = [];
+						this.distance = 0;
+						this.breadcrumbs = [];
+						this.scale = 20;
+						this.path = [[0,-0.5],[-0.25,0.5],[0,0.25],[0.25,0.5],[0,-0.5]];//duplicate the first one at last spot to finish path
+						this.capturedSnakes = [];
+						this.score = 0;
+					}
+
+					getPosition(){
+						return this.position;
+					}
+					
+					getTransformedCoordinates(){
+						let modPath = [];
+						let cs = Math.cos(Math.PI * this.angle/180);
+						let sn = Math.sin(Math.PI * this.angle/180);
+						for(let i=0; i<this.path.length; i++){
+							modPath.push([ 
+								(this.path[i][0]*cs-this.path[i][1]*sn) * this.scale + this.position.x,
+								(this.path[i][1]*cs+this.path[i][0]*sn) * this.scale + this.position.y
+							]);
+
+						}
+						return modPath;
+					}
+
+					draw(ctx){
+						let modPath = this.getTransformedCoordinates();
+
+						ctx.strokeStyle="#FFF";
+						ctx.beginPath();
+						for(let i=0; i < modPath.length-1; i++){
+							ctx.moveTo(modPath[i][0], modPath[i][1]);
+							ctx.lineTo(modPath[i+1][0], modPath[i+1][1]);
+						}
+						ctx.stroke();
+						ctx.closePath();
+
+						this.updateSnakes();
+						for(let i=0; i < this.capturedSnakes.length; i++){
+							//console.log(this.capturedSnakes[i]);
+							//this.capturedSnakes[i].draw(ctx);
+							ctx.beginPath();
+							ctx.fillStyle="#FFF";
+							ctx.arc(this.capturedSnakes[i].position.x, this.capturedSnakes[i].position.y, this.capturedSnakes[i].radius, 0, Math.PI*2);
+							ctx.fill();
+							ctx.closePath();
+						}
+					}
+
+					rotate(ang){
+						this.angle += ang;
+						let cs = Math.cos(Math.PI * this.angle/180);
+						let sn = Math.sin(Math.PI * this.angle/180);
+						//this.velocity.x = cs*velocity.x - sn*velocity.y;
+						//this.velocity,y = sn*velocity.y + cs*velocity.x;
+					}
+
+					accelerate(){
+						this.speed +=0.2;
+					}
+
+					slide(){
+						console.log("sliding!");
+						
+						let cs = Math.cos(Math.PI * this.angle/180);
+						let sn = Math.sin(Math.PI * this.angle/180);
+						
+						let last = {
+							x: this.position.x,
+							y: this.position.y
+						}
+
+						this.position.x += this.speed * sn;
+						this.position.y += -this.speed * cs;
+
+						this.distance += Math.sqrt(Math.pow(this.position.x - last.x,2) + Math.pow(this.position.y - last.y, 2));
+						if(this.distance >= 15){
+							this.breadcrumbs.push({
+								x: this.position.x,
+								y: this.position.y
+							});
+							this.distance = 0;
+							if(this.breadcrumbs.length > this.capturedSnakes.length+1){
+								this.breadcrumbs.shift();
+							}
+						}
+					}
+
+					circleCollision(position, radius){
+						let modPath = this.getTransformedCoordinates();
+
+						//skip checks for first and last snake part
+						for(let i=0; i < modPath.length; i++){
+							if(Math.sqrt( Math.pow(position.x - modPath[i][0], 2) + Math.pow(position.y - modPath[i][1], 2) ) <= radius){
+								return true;
+							}
+						}
+						return false;
+					}
+
+					checkSelfCollision(){
+						let modPath = this.getTransformedCoordinates();
+
+						for(let i=1; i < this.capturedSnakes.length-1; i++){
+							if(this.circleCollision(this.capturedSnakes[i].position, 5)){
+								return true;
+							}
+						}
+						return false;
+					}
+
+					addSnake(snake){
+						//snake.position = {x:-200, y:-200};
+						this.score += 10;
+						this.capturedSnakes.push(snake);
+						this.updateSnakes();
+					}
+
+					updateSnakes(){
+						
+						//first points to the ship, second to first, etc...
+						for(let i=0; i < this.capturedSnakes.length; i++){
+							this.capturedSnakes[i].position = this.breadcrumbs[i];
+							//this.capturedSnakes[i].position = this.prevPositions[i];
+						}
+
+						/*TODO works for making straight lines, we want a train follow effect
+						this.capturedSnakes[i].position = {
+							x: this.position.x - 20*(i+1) * sn,
+							y: this.position.y + 20*(i+1) * cs
+						}
+						*/
+					}
+				}
+
+				var canvas = document.getElementById("canvas");
+				var ctx = canvas.getContext("2d");
+
+
+				//let shipPos = {x:canvas.width*0.5, y:canvas.height*0.5};
+
+				//let ship = new Ship(canvas);
+
+				ctx.clearRect(0,0,canvas.width, canvas.height);
+				ctx.fillStyle = '#000';
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+				//ship.draw(ctx);
+				//clear to black
+				function clear(canvas, ctx){
+					ctx.clearRect(0,0,canvas.width, canvas.height);
+				}
+
+				function drawShip(shipPos){
+
+				}
+
+				const input = {
+					turnLeft : false,
+					turnRight : false,
+					moveForward : false
+				} 
+
+				document.addEventListener("keydown", function(event){
+					switch(event.keyCode){
+						case 65: input.turnLeft = true; /*input.turnRight = false;*/ break;     //a
+						case 68: input.turnRight = true; /*input.turnLeft = false;*/ break;    //d
+						case 83: input.lookDown = true; break;     //s
+						case 82: input.moveForward = true; break;  //r
+						//case 70: input.moveBackward = true; break; //f
+					}
+				});
+				document.addEventListener("keyup", function(event){
+					switch(event.keyCode){
+						case 65: input.turnLeft = false; break;     //a
+						case 68: input.turnRight = false; break;    //d
+						case 83: input.lookDown = false; break;     //s
+						case 82: input.moveForward = false; break;  //r
+						//case 70: input.moveBackward = false; 
+						  //input.hitCount = 0;
+						  //break; //f
+					}
+				});
+
+				//var loopCtl = setInterval(function(){
+					//clear(canvas, ctx);
+				//	ctx.clearRect(0,0,canvas.width, canvas.height);
+				//	ship.draw(ctx);
+				//}, 1000/60);
+				function startGame(){
+					ctx.fillStyle = '#000';
+					ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+					let ship = new Ship(canvas);
+
+					var freeSnake = null;
+					var hasStarted = false;
+					var showStart = true;
+
+					//blink the instructions every 3/4 sec
+					var flasher = setInterval(function(){showStart=!showStart;}, 750);
+
+					var loopCtl = setInterval(function(){
+						console.log(input);
+						if(input.turnLeft){
+							ship.rotate(-5);
+						}else if(input.turnRight){
+							ship.rotate(5);
+						}
+
+						if(input.moveForward){
+							if(!hasStarted){clearInterval(flasher);}
+							hasStarted = true;
+							ship.accelerate();//TODO probably restrict user ability to speed up on their own
+						}
+
+						if(!freeSnake){
+							freeSnake = new FreeSnake(canvas, canvas.width/2.5);
+						}
+
+						console.log(freeSnake.position);
+						if(freeSnake && ship.circleCollision(freeSnake.position, 10)){
+							ship.addSnake(JSON.parse(JSON.stringify(freeSnake)));
+							ship.accelerate();
+							freeSnake = null;
+						}
+
+					
+					
+
+						ctx.fillStyle = '#000';
+						ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+						ship.slide();
+						ship.draw(ctx);
+						freeSnake.draw(ctx);
+
+						//draw score
+						ctx.font = "50px sans-serif";
+						ctx.strokeStyle = "#0F0";
+						ctx.strokeText(ship.score, 60, 60);
+
+						if(!hasStarted && showStart){
+							//print play instructions
+							ctx.font = "50px sans-serif";
+							ctx.strokeStyle = "#0F0";
+							let m1 = ctx.measureText("PRESS R TO START");
+							ctx.strokeText("PRESS R TO START", canvas.width/2-m1.width/2, canvas.height/4);
+							let m2 = ctx.measureText("USE A AND D TO STEER");
+							ctx.strokeText("USE A AND D TO STEER", canvas.width/2-m2.width/2, canvas.height*0.75);
+						}
+
+						//GAME OVER check
+						let p = ship.getPosition();
+						if(p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height || ship.checkSelfCollision()){
+							
+							clearInterval(loopCtl);
+							gameover(ship.score);
+						}
+					
+					}, 1000/60);
+				}
+
+				function gameover(finalScore){
+					ctx.fillStyle = '#000';
+					ctx.fillRect(0, 0, canvas.width, canvas.height);
+					ctx.font = "100px sans-serif";
+					ctx.strokeStyle = "#0F0";
+					let textSize = ctx.measureText("GAME OVER");
+					console.log(textSize);
+					ctx.strokeText("GAME OVER", canvas.width/2-textSize.width/2, canvas.height/2);
+
+					//draw score
+					ctx.font = "50px sans-serif";
+					ctx.strokeStyle = "#0F0";
+					ctx.strokeText(finalScore, 60, 60);
+
+					let restartSize = ctx.measureText("PRESS R TO RESTART");
+					ctx.strokeText("PRESS R TO RESTART", canvas.width/2-restartSize.width/2, canvas.height*0.75);
+
+					//var showStart = true;
+					//blink the instructions every 3/4 sec
+					//var flasher = setInterval(function(){showStart=!showStart;}, 750);
+
+					let inputCtl = setInterval(function(){
+						console.log(input);
+						if(input.moveForward){
+							clearInterval(inputCtl);
+							startGame();
+						}
+					}, 1000/60);
+				}
+
+				function drawGameOverText(){
+
+				}
+
+				startGame();
+			});
+		</script>
+	</head>
+	<body>
+		<center>
+			<canvas id="canvas" width="800" height="800"></canvas>
+		</center>
+	</body>
