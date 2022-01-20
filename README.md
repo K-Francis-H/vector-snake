@@ -1,6 +1,8 @@
 # vector-snake
 A vector version of the classic snake game
 
+Press 'R' to start game, use 'A' and 'D' to turn left and right (of current bearing).
+
 # Screenshots
 ![Start Screen](https://github.com/K-Francis-H/vector-snake/blob/main/screenshots/vector_snake_screenshot.png "Start Screen")
 ![Gameplay Screen](https://github.com/K-Francis-H/vector-snake/blob/main/screenshots/vector_snake_screenshot2.png "Gameplay Screen")
